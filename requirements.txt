@@ -1,0 +1,6 @@
+Google-Images-Search==1.4.7
+Pillow>=8.1.1
+Flask==2.3.2
+Werkzeug==2.3.6
+python-dotenv==1.0.0
+gunicorn==21.2.0
