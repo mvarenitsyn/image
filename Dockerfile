@@ -17,5 +17,5 @@ ENV PORT=8080
 # Expose the port the app runs on
 EXPOSE 8080
 
-# Command to run the application with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "api:app"]
+# Command to run the application with gunicorn (using shell form to allow environment variable interpolation)
+CMD gunicorn --bind 0.0.0.0:$PORT api:app
