@@ -145,7 +145,7 @@ def download_image():
         # Create a temporary directory
         temp_dir = tempfile.mkdtemp(dir=TEMP_DIR)
         
-        # Download the image
+        # Prepare the filename
         filename = os.path.basename(url.split('?')[0])  # Remove query parameters
         if not filename:
             filename = 'image.jpg'
@@ -154,17 +154,19 @@ def download_image():
         filename = secure_filename(filename)
         filepath = os.path.join(temp_dir, filename)
         
-        # Use the GoogleImageAPI to download and optionally resize the image
-        custom_search_result = google_api.search(
-            query='',  # Empty query because we're just using the download functionality
-            num_images=1,
-            download_directory=temp_dir,
-            custom_file_names=[os.path.splitext(filename)[0]]
-        )
+        # Download the image directly
+        import requests
+        response = requests.get(url, stream=True, timeout=10)
+        if response.status_code != 200:
+            return jsonify({'error': 'Failed to download the image from URL'}), 500
+            
+        with open(filepath, 'wb') as f:
+            for chunk in response.iter_content(1024):
+                f.write(chunk)
         
         # If width or height is specified, resize the image
-        if (width or height) and custom_search_result:
-            local_path = custom_search_result[0].get('local_path')
+        if width or height:
+            local_path = filepath
             if local_path:
                 google_api.resize_image(
                     image_path=local_path,
@@ -176,11 +178,7 @@ def download_image():
                 return send_file(local_path, mimetype=f'image/{os.path.splitext(filename)[1][1:]}')
         
         # If resize failed or wasn't requested, return original image
-        if custom_search_result and custom_search_result[0].get('local_path'):
-            return send_file(custom_search_result[0]['local_path'], 
-                             mimetype=f'image/{os.path.splitext(filename)[1][1:]}')
-        else:
-            return jsonify({'error': 'Failed to download the image'}), 500
+        return send_file(filepath, mimetype=f'image/{os.path.splitext(filename)[1][1:]}')
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500

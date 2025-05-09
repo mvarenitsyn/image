@@ -159,6 +159,45 @@ python cli.py run
 
 #### Endpoints
 
+##### GET /
+
+Get API information.
+
+```bash
+curl http://localhost:5000/
+```
+
+Response:
+```json
+{
+  "name": "Google Image Search API",
+  "version": "1.0.0",
+  "endpoints": {
+    "/": "This information page",
+    "/search": "Search for images",
+    "/download": "Download and optionally resize an image",
+    "/cleanup": "Clean up temporary downloaded files",
+    "/health": "Health check endpoint"
+  }
+}
+```
+
+##### GET /health
+
+Health check endpoint.
+
+```bash
+curl http://localhost:5000/health
+```
+
+Response:
+```json
+{
+  "status": "healthy",
+  "message": "API is running"
+}
+```
+
 ##### GET /search
 
 Search for images.
@@ -173,9 +212,12 @@ Query Parameters:
 - `image_type`: Image type (photo, clip-art, etc.)
 - `download`: Whether to download images (default: false)
 
-Example:
-```
-GET /search?q=cute+puppies&num=10&safe=true
+```bash
+# Search for cute puppies, return 10 results
+curl "http://localhost:5000/search?q=cute+puppies&num=10&safe=true"
+
+# Search for landscape photos, return 5 results with specific filters
+curl "http://localhost:5000/search?q=landscape&file_type=jpg&image_type=photo&image_size=large"
 ```
 
 Response:
@@ -207,9 +249,15 @@ Query Parameters:
 - `height`: Target height for resizing
 - `maintain_aspect_ratio`: Whether to maintain aspect ratio (default: true)
 
-Example:
-```
-GET /download?url=https://example.com/image.jpg&width=800&height=600
+```bash
+# Download an image without resizing
+curl -o downloaded_image.jpg "http://localhost:5000/download?url=https://example.com/image.jpg"
+
+# Download and resize an image
+curl -o resized_image.jpg "http://localhost:5000/download?url=https://example.com/image.jpg&width=800&height=600"
+
+# Download and resize an image, without maintaining aspect ratio
+curl -o resized_image.jpg "http://localhost:5000/download?url=https://example.com/image.jpg&width=800&height=600&maintain_aspect_ratio=false"
 ```
 
 Response: The image file.
@@ -218,9 +266,8 @@ Response: The image file.
 
 Clean up temporary downloaded files.
 
-Example:
-```
-POST /cleanup
+```bash
+curl -X POST http://localhost:5000/cleanup
 ```
 
 Response:

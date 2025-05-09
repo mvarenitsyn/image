@@ -6,12 +6,54 @@ from google_images_search import GoogleImagesSearch
 from io import BytesIO
 from PIL import Image
 import os
+import shutil
 from typing import List, Dict, Optional, Union, Tuple
 import config
 
 
 class GoogleImageAPI:
     """Google Image Search API wrapper class"""
+
+    def _get_image_dimensions_from_url(self, url: str) -> Tuple[int, int]:
+        """
+        Get the dimensions of an image from its URL without downloading the entire image.
+        
+        Args:
+            url (str): The URL of the image
+            
+        Returns:
+            Tuple[int, int]: Width and height of the image, or None if it cannot be determined
+        """
+        try:
+            import requests
+            from PIL import Image
+            from io import BytesIO
+            
+            # Make a HEAD request first to check content type
+            head_response = requests.head(url, timeout=5)
+            if not head_response.headers.get('content-type', '').startswith('image'):
+                return None
+                
+            # Stream just enough of the image to get dimensions
+            response = requests.get(url, stream=True, timeout=5)
+            content = BytesIO()
+            
+            # Get just the beginning of the file
+            for chunk in response.iter_content(chunk_size=1024):
+                content.write(chunk)
+                try:
+                    img = Image.open(content)
+                    return img.size  # (width, height)
+                except Exception:
+                    # Not enough data yet, continue downloading
+                    continue
+                    
+            # If we get here, we couldn't determine the size
+            return None
+            
+        except Exception as e:
+            print(f"Error getting image dimensions: {str(e)}")
+            return None
 
     def __init__(self, developer_key: str = None, cx: str = None):
         """
@@ -75,13 +117,19 @@ class GoogleImageAPI:
         # Process results
         results = []
         for i, image in enumerate(self.gis.results()):
+            # The results are GSImage objects with limited attributes
+            # We need to extract what we can, default the rest
+            
+            # Use BytesIO to get image dimensions without saving to disk
+            image_dimensions = self._get_image_dimensions_from_url(image.url)
+            
             image_data = {
                 'url': image.url,
                 'referrer_url': image.referrer_url,
-                'width': image.width,
-                'height': image.height,
-                'file_name': image.filename,
-                'file_size': image.filesize
+                'width': image_dimensions[0] if image_dimensions else 0,
+                'height': image_dimensions[1] if image_dimensions else 0,
+                'file_name': os.path.basename(image.url.split('?')[0]),
+                'file_size': 0  # We can't get this without downloading
             }
             
             # Download the image if a directory is specified
@@ -90,14 +138,48 @@ class GoogleImageAPI:
                 
                 # Set custom filename if provided
                 if custom_file_names and i < len(custom_file_names):
-                    # Extract extension from original filename
-                    extension = os.path.splitext(image.filename)[1]
+                    # Extract extension from the URL
+                    img_url = image.url
+                    extension = os.path.splitext(os.path.basename(img_url.split('?')[0]))[1]
+                    if not extension:
+                        extension = '.jpg'  # Default to jpg if no extension found
                     filename = custom_file_names[i] + extension
                 else:
-                    filename = image.filename
+                    # Generate a filename based on index if none provided
+                    img_url = image.url
+                    basename = os.path.basename(img_url.split('?')[0])
+                    filename = basename if basename else f'image_{i}.jpg'
                 
-                # Download the image
-                image.download(download_directory, filename=filename)
+                # The GSImage download method doesn't support custom filenames
+                # We need to download it first and then rename it
+                try:
+                    # Download the image with default name
+                    image.download(download_directory)
+                    
+                    # Get the downloaded path
+                    downloaded_path = image.path
+                    
+                    # If the download worked and we want a custom filename
+                    if downloaded_path and os.path.exists(downloaded_path):
+                        # Rename to our desired filename
+                        new_path = os.path.join(download_directory, filename)
+                        if downloaded_path != new_path:
+                            shutil.move(downloaded_path, new_path)
+                            filepath = new_path
+                        else:
+                            filepath = downloaded_path
+                    else:
+                        # Use manual download if we couldn't get the file
+                        filepath = os.path.join(download_directory, filename)
+                        import requests
+                        response = requests.get(image.url, stream=True)
+                        if response.status_code == 200:
+                            with open(filepath, 'wb') as f:
+                                for chunk in response.iter_content(1024):
+                                    f.write(chunk)
+                except Exception as e:
+                    print(f"Error downloading image: {str(e)}")
+                    continue
                 image_data['local_path'] = os.path.join(download_directory, filename)
                 
             results.append(image_data)
@@ -161,6 +243,11 @@ class GoogleImageAPI:
             
         # Resize the image
         resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+        
+        # Convert to RGB if it's RGBA mode and we're saving as JPEG
+        if resized_img.mode == 'RGBA' and output_path.lower().endswith(('.jpg', '.jpeg')):
+            resized_img = resized_img.convert('RGB')
+        
         resized_img.save(output_path)
         
         return output_path
